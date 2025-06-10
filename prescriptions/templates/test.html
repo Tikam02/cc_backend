@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Care Clinic API Tester</title>
+    <style>
+        body { font-family: Arial; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .section { border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+        h2 { margin-top: 0; color: #333; }
+        input, select, button { padding: 8px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .token-display { background: #f8f9fa; padding: 10px; margin: 10px 0; word-break: break-all; font-family: monospace; }
+        .success { color: green; }
+        .error { color: red; }
+        .patient-list, .prescription-list { margin-top: 10px; }
+        .item { background: #f8f9fa; padding: 10px; margin: 5px 0; border-radius: 4px; }
+        .medication { background: #e9ecef; padding: 5px; margin: 5px 0; border-radius: 3px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>Care Clinic API Tester</h1>
+    
+    <div class="token-display">
+        <strong>Current Token:</strong> <span id="tokenDisplay">No token stored</span>
+        <button onclick="clearToken()" style="width: auto; float: right;">Clear Token</button>
+    </div>
+    
+    <div class="container">
+        <!-- Login Section -->
+        <div class="section">
+            <h2>1. Login</h2>
+            <input id="phone" placeholder="Phone (+919876543210)" value="+919876543210">
+            <input id="otp" placeholder="OTP" value="123456">
+            <button onclick="login()">Login</button>
+            <div id="loginResult"></div>
+        </div>
+        
+        <!-- Patient Management -->
+        <div class="section">
+            <h2>2. Patient Management</h2>
+            <h3>Add Patient</h3>
+            <input id="patientName" placeholder="Patient Name">
+            <input id="patientPhone" placeholder="Patient Phone">
+            <button onclick="addPatient()">Add Patient</button>
+            <div id="patientResult"></div>
+            
+            <h3>Patient List</h3>
+            <button onclick="getPatients()">Refresh Patient List</button>
+            <div id="patientList" class="patient-list"></div>
+        </div>
+        
+        <!-- Prescription Management -->
+        <div class="section">
+            <h2>3. Create Prescription</h2>
+            <select id="selectedPatient">
+                <option value="">Select Patient</option>
+            </select>
+            
+            <h4>Medications</h4>
+            <div id="medicationsList">
+                <div class="medication">
+                    <input placeholder="Medicine Name" class="med-name">
+                    <input placeholder="Dosage (e.g., 500mg)" class="med-dosage">
+                    <input placeholder="Frequency (e.g., Twice daily)" class="med-frequency">
+                    <input placeholder="Duration (e.g., 7 days)" class="med-duration">
+                    <input placeholder="Instructions" class="med-instructions">
+                </div>
+            </div>
+            <button onclick="addMedicationField()">+ Add Another Medicine</button>
+            
+            <select id="sendVia">
+                <option value="sms">SMS</option>
+                <option value="whatsapp">WhatsApp</option>
+            </select>
+            
+            <button onclick="createPrescription()">Create Prescription</button>
+            <div id="prescriptionResult"></div>
+        </div>
+        
+        <!-- View Prescriptions -->
+        <div class="section">
+            <h2>4. View Prescriptions</h2>
+            <input id="prescriptionToken" placeholder="Enter prescription token (optional)">
+            <button onclick="getPrescription()">Get Prescription</button>
+            <div id="prescriptionView"></div>
+            
+            <h3>Recent Prescriptions</h3>
+            <button onclick="getRecentPrescriptions()">Load Recent</button>
+            <div id="recentPrescriptions"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        
+        function updateTokenDisplay() {
+            const token = localStorage.getItem('token');
+            document.getElementById('tokenDisplay').textContent = token || 'No token stored';
+        }
+        
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            const token = localStorage.getItem('token');
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            
+            const config = { method, headers };
+            if (data) config.body = JSON.stringify(data);
+            
+            const response = await fetch(`${API_BASE}${endpoint}`, config);
+            const responseData = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(responseData.error || JSON.stringify(responseData));
+            }
+            
+            return responseData;
+        }
+        
+        async function login() {
+            try {
+                const phone = document.getElementById('phone').value;
+                const otp = document.getElementById('otp').value;
+                
+                const data = await apiCall('/api/auth/login/', 'POST', { phone_number: phone, otp: otp });
+                
+                localStorage.setItem('token', data.token);
+                updateTokenDisplay();
+                document.getElementById('loginResult').innerHTML = 
+                    `<p class="success">✓ Logged in as ${data.staff.phone_number} (${data.staff.role})</p>`;
+                
+                // Refresh patient list after login
+                getPatients();
+            } catch (error) {
+                document.getElementById('loginResult').innerHTML = 
+                    `<p class="error">✗ ${error.message}</p>`;
+            }
+        }
+        
+        async function addPatient() {
+            try {
+                const name = document.getElementById('patientName').value;
+                const phone = document.getElementById('patientPhone').value;
+                
+                if (!name || !phone) {
+                    throw new Error('Please fill all fields');
+                }
+                
+                const data = await apiCall('/api/patients/', 'POST', { name, phone_number: phone });
+                
+                document.getElementById('patientResult').innerHTML = 
+                    `<p class="success">✓ Patient added: ${data.name}</p>`;
+                document.getElementById('patientName').value = '';
+                document.getElementById('patientPhone').value = '';
+                
+                getPatients();
+            } catch (error) {
+                document.getElementById('patientResult').innerHTML = 
+                    `<p class="error">✗ ${error.message}</p>`;
+            }
+        }
+        
+        async function getPatients() {
+            try {
+                const data = await apiCall('/api/patients/');
+                
+                const patientSelect = document.getElementById('selectedPatient');
+                patientSelect.innerHTML = '<option value="">Select Patient</option>';
+                
+                const listHtml = data.map(patient => {
+                    patientSelect.innerHTML += `<option value="${patient.id}">${patient.name} - ${patient.phone_number}</option>`;
+                    return `
+                        <div class="item">
+                            <strong>${patient.name}</strong><br>
+                            📞 ${patient.phone_number}<br>
+                            <small>ID: ${patient.id}</small>
+                        </div>
+                    `;
+                }).join('');
+                
+                document.getElementById('patientList').innerHTML = listHtml || '<p>No patients found</p>';
+            } catch (error) {
+                document.getElementById('patientList').innerHTML = 
+                    `<p class="error">✗ ${error.message}</p>`;
+            }
+        }
+        
+        function addMedicationField() {
+            const medList = document.getElementById('medicationsList');
+            const medDiv = document.createElement('div');
+            medDiv.className = 'medication';
+            medDiv.innerHTML = `
+                <input placeholder="Medicine Name" class="med-name">
+                <input placeholder="Dosage (e.g., 500mg)" class="med-dosage">
+                <input placeholder="Frequency (e.g., Twice daily)" class="med-frequency">
+                <input placeholder="Duration (e.g., 7 days)" class="med-duration">
+                <input placeholder="Instructions" class="med-instructions">
+                <button onclick="this.parentElement.remove()" style="background: #dc3545;">Remove</button>
+            `;
+            medList.appendChild(medDiv);
+        }
+        
+        async function createPrescription() {
+            try {
+                const patientId = document.getElementById('selectedPatient').value;
+                if (!patientId) throw new Error('Please select a patient');
+                
+                const medications = [];
+                document.querySelectorAll('.medication').forEach(med => {
+                    const name = med.querySelector('.med-name').value;
+                    const dosage = med.querySelector('.med-dosage').value;
+                    const frequency = med.querySelector('.med-frequency').value;
+                    const duration = med.querySelector('.med-duration').value;
+                    const instructions = med.querySelector('.med-instructions').value;
+                    
+                    if (name && dosage && frequency && duration) {
+                        medications.push({ name, dosage, frequency, duration, instructions });
+                    }
+                });
+                
+                if (medications.length === 0) throw new Error('Add at least one medication');
+                
+                const sendVia = document.getElementById('sendVia').value;
+                
+                const data = await apiCall('/api/prescriptions/', 'POST', {
+                    patient_id: patientId,
+                    medications: medications,
+                    send_via: sendVia
+                });
+                
+                document.getElementById('prescriptionResult').innerHTML = `
+                    <p class="success">✓ Prescription created!</p>
+                    <p>Token: <code>${data.token}</code></p>
+                    <p>Link: <a href="${API_BASE}/prescription?token=${data.token}" target="_blank">View Prescription</a></p>
+                `;
+                
+                // Clear form
+                document.getElementById('selectedPatient').value = '';
+                document.getElementById('medicationsList').innerHTML = `
+                    <div class="medication">
+                        <input placeholder="Medicine Name" class="med-name">
+                        <input placeholder="Dosage (e.g., 500mg)" class="med-dosage">
+                        <input placeholder="Frequency (e.g., Twice daily)" class="med-frequency">
+                        <input placeholder="Duration (e.g., 7 days)" class="med-duration">
+                        <input placeholder="Instructions" class="med-instructions">
+                    </div>
+                `;
+                
+            } catch (error) {
+                document.getElementById('prescriptionResult').innerHTML = 
+                    `<p class="error">✗ ${error.message}</p>`;
+            }
+        }
+        
+        async function getPrescription() {
+            try {
+                const token = document.getElementById('prescriptionToken').value;
+                const endpoint = token ? `/api/prescriptions/public/?token=${token}` : '/api/prescriptions/public/';
+                
+                const data = await fetch(`${API_BASE}${endpoint}`).then(r => r.json());
+                
+                if (data.medications) {
+                    const medList = data.medications.map(med => `
+                        <tr>
+                            <td>${med.name}</td>
+                            <td>${med.dosage}</td>
+                            <td>${med.frequency}</td>
+                            <td>${med.duration}</td>
+                            <td>${med.instructions || '-'}</td>
+                        </tr>
+                    `).join('');
+                    
+                    document.getElementById('prescriptionView').innerHTML = `
+                        <div class="item">
+                            <h4>Patient: ${data.patient_name} (${data.patient_phone})</h4>
+                            <p>Created: ${new Date(data.created_at).toLocaleString()}</p>
+                            <table>
+                                <tr>
+                                    <th>Medicine</th>
+                                    <th>Dosage</th>
+                                    <th>Frequency</th>
+                                    <th>Duration</th>
+                                    <th>Instructions</th>
+                                </tr>
+                                ${medList}
+                            </table>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('prescriptionView').innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
+            } catch (error) {
+                document.getElementById('prescriptionView').innerHTML = 
+                    `<p class="error">✗ ${error.message}</p>`;
+            }
+        }
+        
+        async function getRecentPrescriptions() {
+            try {
+                const data = await fetch(`${API_BASE}/api/prescriptions/public/`).then(r => r.json());
+                
+                if (data.recent_prescriptions) {
+                    const listHtml = data.recent_prescriptions.map(p => `
+                        <div class="item">
+                            <strong>${p.patient}</strong><br>
+                            Token: <code>${p.token}</code><br>
+                            <a href="${p.test_url}" target="_blank">View</a>
+                        </div>
+                    `).join('');
+                    
+                    document.getElementById('recentPrescriptions').innerHTML = listHtml;
+                }
+            } catch (error) {
+                document.getElementById('recentPrescriptions').innerHTML = 
+                    `<p class="error">✗ ${error.message}</p>`;
+            }
+        }
+        
+        function clearToken() {
+            localStorage.removeItem('token');
+            updateTokenDisplay();
+        }
+        
+        // Initial setup
+        updateTokenDisplay();
+    </script>
+</body>
+</html>

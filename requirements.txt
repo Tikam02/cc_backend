@@ -1,0 +1,7 @@
+django==4.2.7
+djangorestframework==3.14.0
+django-cors-headers==4.3.0
+python-decouple==3.8
+twilio==8.10.0
+PyJWT==2.8.0
+psycopg2-binary==2.9.9
